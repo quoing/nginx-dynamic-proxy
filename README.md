@@ -6,10 +6,10 @@ Content:
   * nginx/lua/dynamic-route.lua - dynamic routing based on redis entries
    * based on http://bit.ly/1M9GO79
    * Usage:
-  
-   > redis-cli
-
-   > set route:domain.tld 127.0.0.1:1234
+   ```
+     > redis-cli
+     > set route:domain.tld 127.0.0.1:1234
+     ```
    
    to direct domain.tld to host localhost port 1234
   * nginx/lua/tls-redis.lua - dynamic SSL certificates loading from redis database
