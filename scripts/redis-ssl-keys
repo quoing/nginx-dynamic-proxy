@@ -1,0 +1,74 @@
+#!/bin/bash
+#
+KEY_STORE="/etc/letsencrypt/live/"	# letsenrypt live keystore
+REDIS_HOST="127.0.0.1"
+REDIS_PORT="6379"
+REDIS_AUTH="my-secret-password"		# leave empty to skip redis authentication
+OPENSSL_BIN="/usr/bin/openssl"
+REDISCLI_BIN="/usr/bin/redis-cli"
+CONVERT="PEM_TO_DER"
+
+function convert_PEM_TO_DER {
+        KEY_TYPE="$1"
+        SRC="$2"
+        DST="$3"
+        if [ -z $DST ]; then
+                # guess destination filename
+                echo "PEM_TO_DER: guessing destination filename" >&2
+                D_DIR="`dirname $SRC`"
+                D_NAME="`basename $SRC .pem`"
+                DST="${D_DIR}/${D_NAME}.der"
+        fi
+        if [ $KEY_TYPE == "PKEY" ]; then
+                echo "PEM_TO_DER: Converting private key $SRC to $DST" >&2
+                $OPENSSL_BIN rsa -outform DER -in $SRC -out $DST && echo "$DST"
+        elif [ $KEY_TYPE == "CERT" ]; then
+                echo "PEM_TO_DER: Converting CA key $SRC to $DST" >&2
+                $OPENSSL_BIN x509 -outform der -in $SRC -out $DST && echo "$DST"
+
+        else
+                echo "PEM_TO_DER: Missing or wrong parameters" >&2
+        fi
+}
+
+# redis parameter configuration
+[ -n "$REDIS_HOST" ] && REDIS_HOST="-h $REDIS_HOST"
+[ -n "$REDIS_PORT" ] && REDIS_PORT="-p $REDIS_PORT"
+[ -n "$REDIS_AUTH" ] && REDIS_AUTH="-a $REDIS_AUTH"
+REDISCLI_BIN="$REDISCLI_BIN $REDIS_HOST $REDIS_PORT $REDIS_AUTH"
+
+echo "Looking for certificates in $KEY_STORE"
+find $KEY_STORE -name cert.pem | while read CERT
+do
+        echo "- $CERT"
+        CERT_PATH="`dirname $CERT`"
+        PKEY="$CERT_PATH/privkey.pem"
+        CERT_SERIAL="`openssl x509 -noout -serial -in $CERT | cut -d'=' -f2`"
+        CERT_EXPIRY="`openssl x509 -noout -enddate -in $CERT | cut -d'=' -f2`"
+        echo "  \`- CA key serial: $CERT_SERIAL"
+        echo "  \`- key expire: $CERT_EXPIRY"
+        echo "  \`- converting CA key: $CONVERT $CERT"
+        CERT_DER=$(convert_$CONVERT CERT $CERT)
+        echo "  \`- converting private key: $CONVERT $PKEY"
+        PKEY_DER=$(convert_$CONVERT PKEY $PKEY)
+        echo -n "  \`- adding certificates to REDIS:"
+        if [ -n $CERT_DER ]; then
+                echo -n " CA"
+                #echo -n "=( $CERT_DER )"
+                $REDISCLI_BIN -x HSET "cetificate:$CERT_SERIAL" cert < $CERT_DER
+        fi
+        if [ -n $PKEY_DER ]; then
+                echo -n " PK"
+                #echo -n "=( $PKEY_DER )"
+                $REDISCLI_BIN -x HSET "cetificate:$CERT_SERIAL" key < $PKEY_DER
+        fi
+        echo " done."
+        #if [ -n
+        echo "  \`- DNS names"
+        $OPENSSL_BIN x509 -noout -text -in "$CERT" | awk '/X509v3 Subject Alternative Name/ {getline;gsub(/ /, "", $0);gsub(/,/, "\n", $0); print }' | tr -d "DNS:" | while read NAME
+        do
+                echo "    \`- $NAME"
+                $REDISCLI_BIN SET "domain:$NAME" "cetificate:$CERT_SERIAL"
+        done
+done
+
