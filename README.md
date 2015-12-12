@@ -8,3 +8,4 @@ Content:
   * nginx/lua/tls-redis.lua - dynamic SSL certificates loading from redis database
    * based on http://bit.ly/1NpeXSv
   * scripts/redis-ssl-keys - load LetsEncypt live certificated to redis database
+  * deb/openresty_1.9.3.1-quoing1_amd64.deb - Compiled openresty DEB package for debian/jessie (be sure to review build options, no warranty regarding this build, use at you own risk!)
