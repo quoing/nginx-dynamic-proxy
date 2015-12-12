@@ -1,0 +1,11 @@
+#! /bin/bash
+set -eux
+
+docker build -t debian:jessie .
+CONTAINER=$(docker create debian:jessie --name openresty:build)
+if [ ! -d ./artifacts ]; then
+    mkdir ./artifacts
+fi
+docker cp $CONTAINER:/build/openresty_1.9.3.1-quoing1_amd64.deb ./artifacts/
+#docker rm $CONTAINER
+
